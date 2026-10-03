@@ -1,62 +1,81 @@
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/BasisResearch/dynestyx/test.yml) ![GitHub License](https://img.shields.io/github/license/BasisResearch/dynestyx)
+# Structured Continuous-Discrete SLGSSMs for Multi-Agent Interactions
 
-# Welcome to Dynestyx
+Here we provide all code to reproduce results in **“Structured Continuous-Discrete Switching Linear Gaussian State-Space Models for Multi-Agent Interactions,”**.
 
-![dynestyx logo](docs/logo/dynestyx.gif)
+The paper introduces a structured continuous-discrete switching linear Gaussian state-space model for recovering regime-dependent interactions from partially and irregularly observed multi-agent trajectories. The latent state contains each agent’s position and velocity, while regime-dependent interaction weights define interpretable cross-agent coupling.
 
-`dynestyx` is a library designed for Bayesian modeling and inference of dynamical systems. It is an extension of [NumPyro](https://num.pyro.ai/en/stable/), and incorporates a wide variety of state-of-the-art inference methods for state space models.
+This work is implemented in a fork of [Dynestyx](https://github.com/BasisResearch/dynestyx). 
 
-To get started, you can [read the documentation](https://basisresearch.github.io/dynestyx) (version menu: **stable** = latest release, **latest** = `main`) or go straight to the [quickstart](https://basisresearch.github.io/dynestyx/stable/tutorials/quickstart/).
+## Main Result Notebook
 
-## Goals of `dynestyx`
+The complete simulation study is provided in:
 
-The goal of `dynestyx` is to decouple model code and inference code for dynamical systems, a common theme in *probabilistic programming languages* like [NumPyro](https://num.pyro.ai/en/stable/). The benefits of this are two-fold: modellers get an interface that is simple to use, with access to advanced inference methods for free. Methods researchers simultaneously get a platform where their methodologies can be immediately used, with a natural testbed of problems to evaluate performance on.
+- [`SLDS_mutli_agent_model.ipynb`](docs/tutorials/gentle_intro/SLDS_mutli_agent_model.ipynb)
 
-### Relation to Existing Libraries
+The notebook includes:
 
-While many probabilistic programming languages now exist (e.g., [Pyro](https://pyro.ai/), [NumPyro](https://num.pyro.ai/en/stable/), and [Stan](https://mc-stan.org/)), these solutions do not offer support of structured inference methods specifically designed for the dynamical systems setting, leading to subpar inference and ad-hoc code that may be difficult to write for practitioners. In `dynestyx`, we treat dynamical systems as first-class objects, with direct interfacing to methods like pseudo-marginal MCMC and stochastic variational inference for parameter inference.
+- simulation from the structured position-velocity SLDS;
+- MAP estimation using a point-mass variational approximation and a Rao-Blackwellized particle filter;
+- parameter and filtered-state recovery under uniform and empirically derived missing-observation patterns; and
+- parameter and filtered-state recovery under independently generated irregular observation schedules.
 
-Simultaneously, many strong solutions exist for inference in dynamical systems; modern examples include [dynamax](https://github.com/probml/dynamax) for discrete-time dynamical systems, [cd-dynamax](https://github.com/hd-UQ/cd_dynamax) for continuous-time dynamical systems, and [PFJax](https://pfjax.readthedocs.io/en/latest/) for nonlinear and non-Gaussian discrete-time dynamical systems. While featureful, one drawback of this suite of methods is a varied set of APIs, with model code that is tightly coupled with the resulting inference method. In `dynestyx`, we offer a large variety of different inference methods under the same roof in a unified, abstract API. Iterating and selecting the appropriate inference methods is thus a significantly simpler process. Using tools from PPLs, we are also able to introspectively analyze a given model, and select appropriate inference methods which take advantage of model structure (e.g., linearity or Gaussianity).
+## Saved results
 
-## Installation
+The numerical results used by the notebook are included so that the figures can be regenerated without rerunning model fitting:
 
-For installation, we recommend [`uv`](https://docs.astral.sh/uv/):
+- [`SLDS_mutli_agent_model_recovery_results.npz`](docs/tutorials/gentle_intro/SLDS_mutli_agent_model_recovery_results.npz): parameter and filtered-state recovery under regular-grid masking and missing observations.
+- [`SLDS_mutli_agent_model_irregular_recovery_results.npz`](docs/tutorials/gentle_intro/SLDS_mutli_agent_model_irregular_recovery_results.npz): parameter and filtered-state recovery across irregular observation schedules.
+
+## Implementation
+
+The branch includes the SLDS and missing-observation functionality required by the experiments. The principal implementation files are:
+
+- [`dynestyx/inference/integrations/cd_dynamax/discrete_filter.py`](dynestyx/inference/integrations/cd_dynamax/discrete_filter.py)
+- [`dynestyx/inference/configs/filter.py`](dynestyx/inference/configs/filter.py)
+- [`dynestyx/inference/filters.py`](dynestyx/inference/filters.py)
+- [`dynestyx/models/state_evolution.py`](dynestyx/models/state_evolution.py)
+- [`dynestyx/models/observations.py`](dynestyx/models/observations.py)
+- [`dynestyx/distributions.py`](dynestyx/distributions.py)
+
+The corresponding implementation tests are in [`tests/test_slds_rbpf.py`](tests/test_slds_rbpf.py) and [`tests/test_missing_observations.py`](tests/test_missing_observations.py).
+
+## Environment setup
+
+Clone this branch and install the development environment using [`uv`](https://docs.astral.sh/uv/):
+
 ```bash
-uv pip install dynestyx
+git clone --branch neurips-2026-reproducibility \
+    https://github.com/anushri10/dynestyx.git
+cd dynestyx
+uv sync --group dev
 ```
 
-But `pip` works as well:
+Start Jupyter from the repository root:
+
 ```bash
-pip install dynestyx
+uv run jupyter lab docs/tutorials/gentle_intro/SLDS_mutli_agent_model.ipynb
 ```
 
-> **Developers**: See [Contributing Guidelines](CONTRIBUTING.md) for the development setup using `uv sync`.
+The full recovery experiments use the fixed random seeds and settings specified in the notebook and may require substantial computation. The included `.npz` archives can be loaded by the plotting cells without rerunning model fitting.
 
-## Quickstart
+## Empirical missingness patterns
 
-We provide a more mathematical introduction in the [Introduction](docs/math_intro.md) section. For a hands-on tutorial with code examples, check out the [Quickstart Tutorial](docs/tutorials/quickstart.ipynb).
+The synthetic uniform-missingness and irregular-sampling experiments are documented by the notebook and saved result files. Cells that construct observation masks from the empirical dataset additionally require `train.npz`, `val.npz`, and `test.npz`. Set their parent directory before running those cells:
 
-## Third-party acknowledgements
-
-The diminishing adaptation rule used by `AdaptiveMetropolis` is inspired by [PFJAX's MCMC implementation](https://github.com/mlysy/pfjax/blob/97652aa1bdff73a92c0286549b010e99cc6f7264/src/pfjax/mcmc.py).
-
-## Contributing
-
-Contributions are welcome. See [Contributing Guidelines](CONTRIBUTING.md) for development setup, testing expectations, and the pull request workflow.
-
-## Citing Dynestyx
-
-If you are considering citing `dynestyx`, please cite the paper
-["Dynestyx: A Probabilistic Programming Library for Dynamical Systems"](https://arxiv.org/abs/2606.16985):
-
-```bibtex
-@misc{waxman2026dynestyxprobabilisticprogramminglibrary,
-      title={Dynestyx: A Probabilistic Programming Library for Dynamical Systems},
-      author={Daniel Waxman and Dmitry Batenkov and John Feser and Andy Zane and Eli Bingham and Youssef Marzouk and Matthew E. Levine},
-      year={2026},
-      eprint={2606.16985},
-      archivePrefix={arXiv},
-      primaryClass={stat.ML},
-      url={https://arxiv.org/abs/2606.16985}
-}
+```bash
+export DYNESTYX_SLDS_DATA_DIR=/absolute/path/to/data
 ```
+
+The empirical dataset is not redistributed in this repository.
+
+## Upstream project
+
+For the maintained Dynestyx package, documentation, and general tutorials, see the [upstream Dynestyx repository](https://github.com/BasisResearch/dynestyx). Links to the upstream implementation will be added here as the relevant changes are integrated.
+
+## Citation
+
+Citation information for the workshop paper will be added when the proceedings metadata is available.
+
+## License
+
+This branch retains the license of the upstream Dynestyx project. See [`LICENSE.md`](LICENSE.md).
