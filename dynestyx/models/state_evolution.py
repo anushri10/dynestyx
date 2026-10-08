@@ -8,11 +8,15 @@ import warnings
 from collections.abc import Callable
 from typing import NamedTuple, cast
 
+import equinox as eqx
 import jax.numpy as jnp
 import numpyro.distributions as dist
 from jaxtyping import Array, Float, Real
 
-from dynestyx.distributions import MixedStateDistribution
+from dynestyx.distributions import (
+    MixedStateDistribution,
+    _extract_and_validate_mixed_state,
+)
 from dynestyx.models.core import DiscreteTimeStateEvolution
 from dynestyx.models.drifts import AffineDrift as _AffineDrift
 
@@ -220,19 +224,23 @@ class SwitchingLinearGaussianStateEvolution(DiscreteTimeStateEvolution):
     """
 
     transition_matrix: Float[Array, "num_regimes num_regimes"]
-    A: Float[Array, "num_regimes state_dim state_dim"]
-    cov: Float[Array, "num_regimes state_dim state_dim"]
-    B: Float[Array, "num_regimes state_dim control_dim"] | None = None
-    bias: Float[Array, "num_regimes state_dim"] | None = None
+    A: Float[Array, "num_regimes continuous_state_dim continuous_state_dim"]
+    cov: Float[Array, "num_regimes continuous_state_dim continuous_state_dim"]
+    B: Float[Array, "num_regimes continuous_state_dim control_dim"] | None = None
+    bias: Float[Array, "num_regimes continuous_state_dim"] | None = None
+
+    rounding: bool = False
 
     def __init__(
         self,
-        transition_matrix,
-        A,
-        cov,
-        B=None,
-        bias=None,
-    ):
+        transition_matrix: Float[Array, "num_regimes num_regimes"],
+        A: Float[Array, "num_regimes continuous_state_dim continuous_state_dim"],
+        cov: Float[Array, "num_regimes continuous_state_dim continuous_state_dim"],
+        B: Float[Array, "num_regimes continuous_state_dim control_dim"] | None = None,
+        bias: Float[Array, "num_regimes continuous_state_dim"] | None = None,
+        *,
+        rounding: bool = False,
+    ) -> None:
         """
         Args:
             transition_matrix: Regime transition matrix with shape `(K, K)`.
@@ -240,12 +248,16 @@ class SwitchingLinearGaussianStateEvolution(DiscreteTimeStateEvolution):
             cov: Regime-specific process covariances with shape `(K, D, D)`.
             B: Optional regime-specific control matrices with shape `(K, D, U)`.
             bias: Optional regime-specific dynamics biases with shape `(K, D)`.
+            rounding: Round the mixed state discrete component to the nearest
+                integer (ties to even) before validation. Defaults to False.
+                Nonfinite or out-of-range results raise an error.
         """
         self.transition_matrix = transition_matrix
         self.A = A
         self.cov = cov
         self.B = B
         self.bias = bias
+        self.rounding = rounding
 
     @property
     def num_regimes(self) -> int:
@@ -255,9 +267,21 @@ class SwitchingLinearGaussianStateEvolution(DiscreteTimeStateEvolution):
     def continuous_state_dim(self) -> int:
         return int(self.A.shape[-1])
 
-    def __call__(self, x, u, t_now, t_next):
-        z = jnp.rint(x[..., 0]).astype(jnp.int32)
-        x_cont = x[..., 1:]
+    def __call__(
+        self,
+        x: Real[Array, " mixed_state_dim"],
+        u: Real[Array, " control_dim"] | None,
+        t_now: float | int | Real[Array, ""],
+        t_next: float | int | Real[Array, ""],
+    ) -> MixedStateDistribution:
+        z, x_cont, valid = _extract_and_validate_mixed_state(
+            x, self.num_regimes, rounding=self.rounding
+        )
+        z = eqx.error_if(
+            z,
+            ~valid,
+            "Mixed state discrete component must be a finite integer in [0, num_categories).",
+        )
         locs = jnp.einsum("kij,j->ki", self.A, x_cont)
         if self.bias is not None:
             locs = locs + self.bias
@@ -267,6 +291,7 @@ class SwitchingLinearGaussianStateEvolution(DiscreteTimeStateEvolution):
             categorical_probs=self.transition_matrix[z],
             continuous_locs=locs,
             continuous_covs=self.cov,
+            rounding=self.rounding,
         )
 
 
